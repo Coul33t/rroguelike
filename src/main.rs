@@ -90,8 +90,6 @@ fn main() -> rltk::BError {
 
     register_components(&mut gs);
 
-    create_entity(&mut gs, 5, 5, rltk::to_cp437('@'), RGB::named(rltk::YELLOW), RGB::named(rltk::BLACK), true);
-
     for i in 0..10 {
         for j in 0..10 {
             if i == 5 && j == 5 {
@@ -104,7 +102,11 @@ fn main() -> rltk::BError {
         }
     }
 
-    gs.ecs.insert(new_map_test());
+    let (map, rooms) = new_map_rooms();
+    let (x, y) = rooms[0].center();
+    create_entity(&mut gs, x, y, rltk::to_cp437('@'), RGB::named(rltk::YELLOW), RGB::named(rltk::BLACK), true);
+
+    gs.ecs.insert(map);
 
     rltk::main_loop(context, gs)
 }
