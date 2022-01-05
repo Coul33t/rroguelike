@@ -1,9 +1,5 @@
-use rltk::{GameState, Rltk, RGB, VirtualKeyCode};
+use rltk::{GameState, Rltk, RGB};
 use specs::prelude::*;
-use std::cmp::{max, min};
-
-
-use rand::Rng;
 
 mod components;
 pub use components::*;
@@ -13,6 +9,9 @@ mod player;
 use player::*;
 mod rect;
 pub use rect::Rect;
+
+mod visibility_system;
+use visibility_system::VisibilitySystem;
 
 pub struct State {
     ecs: World
@@ -25,8 +24,7 @@ impl GameState for State {
         player_input(self, ctx);
         self.run_systems();
 
-        let map = self.ecs.fetch::<Vec<TileType>>();
-        draw_map(&map, ctx);
+        draw_map(&self.ecs, ctx);
 
         let positions = self.ecs.read_storage::<Position>();
         let renderables = self.ecs.read_storage::<Renderable>();
@@ -41,7 +39,9 @@ impl GameState for State {
 
 impl State {
     fn run_systems(&mut self) {
-
+        let mut vis = VisibilitySystem{};
+        vis.run_now(&self.ecs);
+        self.ecs.maintain();
     }
 }
 
@@ -49,6 +49,7 @@ fn register_components(gs: &mut State) {
     gs.ecs.register::<Position>();
     gs.ecs.register::<Renderable>();
     gs.ecs.register::<Player>();
+    gs.ecs.register::<Viewshed>();
 }
 
 fn create_entity(gs: &mut State, x: i32, y: i32, glyph: rltk::FontCharType, fg: RGB, bg: RGB, is_player: bool) {
@@ -61,6 +62,7 @@ fn create_entity(gs: &mut State, x: i32, y: i32, glyph: rltk::FontCharType, fg: 
                 bg: bg,
             })
             .with(Player{})
+            .with(Viewshed{visible_tiles : Vec::new(), range : 8})
         .build();
     }
 
@@ -102,11 +104,12 @@ fn main() -> rltk::BError {
         }
     }
 
-    let (map, rooms) = new_map_rooms();
-    let (x, y) = rooms[0].center();
+    let map: Map = Map::new_map_rooms();
+    let (x, y) = map.rooms[0].center();
+    gs.ecs.insert(map);
+
     create_entity(&mut gs, x, y, rltk::to_cp437('@'), RGB::named(rltk::YELLOW), RGB::named(rltk::BLACK), true);
 
-    gs.ecs.insert(map);
 
     rltk::main_loop(context, gs)
 }
