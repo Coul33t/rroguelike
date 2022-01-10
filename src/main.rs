@@ -62,7 +62,7 @@ fn create_entity(gs: &mut State, x: i32, y: i32, glyph: rltk::FontCharType, fg: 
                 bg: bg,
             })
             .with(Player{})
-            .with(Viewshed{visible_tiles : Vec::new(), range : 8})
+            .with(Viewshed{visible_tiles : Vec::new(), range : 8, dirty: true})
         .build();
     }
 
