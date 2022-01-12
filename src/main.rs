@@ -1,4 +1,4 @@
-use rltk::{GameState, Rltk, RGB};
+use rltk::{GameState, Rltk, RGB, Point};
 use specs::prelude::*;
 
 mod components;
@@ -13,24 +13,44 @@ pub use rect::Rect;
 mod visibility_system;
 use visibility_system::VisibilitySystem;
 
+mod monster_ai_system;
+use monster_ai_system::MonsterAI;
+
+
+
+
+
+#[derive(PartialEq, Copy, Clone)]
+pub enum RunState {Paused, Running}
+
 pub struct State {
-    ecs: World
+    ecs: World,
+    pub runstate: RunState
 }
 
 impl GameState for State {
     fn tick(&mut self, ctx: &mut Rltk) {
         ctx.cls();
 
-        player_input(self, ctx);
-        self.run_systems();
+        if self.runstate == RunState::Running {
+            self.run_systems();
+            self.runstate = RunState::Paused;
+        }
+
+        else {
+            self.runstate = player_input(self, ctx);
+        }
 
         draw_map(&self.ecs, ctx);
 
         let positions = self.ecs.read_storage::<Position>();
         let renderables = self.ecs.read_storage::<Renderable>();
+        let map = self.ecs.fetch::<Map>();
 
         for (pos, render) in (&positions, &renderables).join() {
-            ctx.set(pos.x, pos.y, render.fg, render.bg, render.glyph);
+            if map.visible_tiles[map.xy_idx(pos.x, pos.y)] {
+                ctx.set(pos.x, pos.y, render.fg, render.bg, render.glyph);
+            }
         }
 
         ctx.print(1, 1, "Hello RLTK world!");
@@ -41,6 +61,8 @@ impl State {
     fn run_systems(&mut self) {
         let mut vis = VisibilitySystem{};
         vis.run_now(&self.ecs);
+        let mut mob = MonsterAI{};
+        mob.run_now(&self.ecs);
         self.ecs.maintain();
     }
 }
@@ -48,12 +70,31 @@ impl State {
 fn register_components(gs: &mut State) {
     gs.ecs.register::<Position>();
     gs.ecs.register::<Renderable>();
-    gs.ecs.register::<Player>();
     gs.ecs.register::<Viewshed>();
+    gs.ecs.register::<Name>();
+    
+    // Tags
+    gs.ecs.register::<Player>();
+    gs.ecs.register::<Monster>();
 }
 
-fn create_entity(gs: &mut State, x: i32, y: i32, glyph: rltk::FontCharType, fg: RGB, bg: RGB, is_player: bool) {
-    if is_player {
+fn create_monster(gs: &mut State, x: i32, y: i32, glyph: rltk::FontCharType, fg: RGB, bg: RGB, name: String) {
+    
+    gs.ecs.create_entity()
+        .with(Position {x: x, y: y})
+        .with(Renderable {
+            glyph: glyph,
+            fg: fg,
+            bg: bg,
+        })
+        .with(Viewshed{visible_tiles : Vec::new(), range : 8, dirty: true})
+        .with(Monster{})
+        .with(Name{name: name})
+    .build();
+}
+
+fn create_player(gs: &mut State, x: i32, y: i32, glyph: rltk::FontCharType, fg: RGB, bg: RGB) {
+
         gs.ecs.create_entity()
             .with(Position {x: x, y: y})
             .with(Renderable {
@@ -63,18 +104,27 @@ fn create_entity(gs: &mut State, x: i32, y: i32, glyph: rltk::FontCharType, fg: 
             })
             .with(Player{})
             .with(Viewshed{visible_tiles : Vec::new(), range : 8, dirty: true})
+            .with(Name{name: "Player".to_string()})
         .build();
-    }
 
-    else {
-        gs.ecs.create_entity()
-            .with(Position {x: x, y: y})
-            .with(Renderable {
-                glyph: glyph,
-                fg: fg,
-                bg: bg,
-            })
-        .build();
+        gs.ecs.insert(Point::new(x, y));
+}
+
+fn populate_rooms(gs: &mut State, map: &Map) {
+    for (i, room) in map.rooms.iter().skip(1).enumerate() {
+        let (x, y) = room.center();
+        let glyph: rltk::FontCharType;
+        let name: String;
+
+        let mut rng = rltk::RandomNumberGenerator::new();
+        let roll = rng.roll_dice(1, 10);
+
+        match roll {
+            1..=8 => { glyph = rltk::to_cp437('x'); name = format!("Small x #{}", i).to_string(); }
+            _     => { glyph = rltk::to_cp437('X'); name = format!("Big X #{}", i).to_string(); }
+        }
+
+        create_monster(gs, x, y, glyph, RGB::named(rltk::GREEN), RGB::named(rltk::BLACK), name);
     }
 }
 
@@ -87,29 +137,18 @@ fn main() -> rltk::BError {
         .with_title("RRoguelike").build()?;
 
     let mut gs = State{
-        ecs: World::new()
+        ecs: World::new(),
+        runstate: RunState::Running
     };
 
     register_components(&mut gs);
 
-    for i in 0..10 {
-        for j in 0..10 {
-            if i == 5 && j == 5 {
-                create_entity(&mut gs, 10 + i*2, 10 + j*2, rltk::to_cp437('X'), RGB::named(rltk::GREEN), RGB::named(rltk::BLACK), false);
-            }
-
-            else {
-                create_entity(&mut gs, 10 + i*2, 10 + j*2, rltk::to_cp437('x'), RGB::named(rltk::GREEN), RGB::named(rltk::BLACK), false);
-            }
-        }
-    }
-
     let map: Map = Map::new_map_rooms();
     let (x, y) = map.rooms[0].center();
+    populate_rooms(&mut gs, &map);
     gs.ecs.insert(map);
 
-    create_entity(&mut gs, x, y, rltk::to_cp437('@'), RGB::named(rltk::YELLOW), RGB::named(rltk::BLACK), true);
-
+    create_player(&mut gs, x, y, rltk::to_cp437('@'), RGB::named(rltk::YELLOW), RGB::named(rltk::BLACK));
 
     rltk::main_loop(context, gs)
 }

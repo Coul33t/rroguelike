@@ -98,7 +98,7 @@ impl Map {
         };
     
         const MAX_ROOM: i32 = 20;
-        const MIN_SIZE: i32 = 3;
+        const MIN_SIZE: i32 = 4;
         const MAX_SIZE: i32 = 10;
     
         let mut rng = RandomNumberGenerator::new();
